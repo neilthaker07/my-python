@@ -38,7 +38,10 @@ def list_tasks(
     completed_since: Optional[date] = None,
     today: Optional[date] = None,
     visible_to: Optional[User] = None,
+    newest_first: bool = False,
+    limit: Optional[int] = None,
 ) -> list[Task]:
+    """Tasks ordered by due date (undated last), or by creation time with `newest_first`."""
     today = today or date.today()
     stmt = _visible(select(Task), visible_to)
 
@@ -51,7 +54,12 @@ def list_tasks(
     if completed_since is not None:
         stmt = stmt.where(Task.completed_at >= datetime.combine(completed_since, time.min))
 
-    stmt = stmt.order_by(Task.due_date.is_(None), Task.due_date, Task.id)
+    if newest_first:
+        stmt = stmt.order_by(Task.created_at.desc(), Task.id.desc())
+    else:
+        stmt = stmt.order_by(Task.due_date.is_(None), Task.due_date, Task.id)
+    if limit is not None:
+        stmt = stmt.limit(limit)
     return list(db.scalars(stmt))
 
 

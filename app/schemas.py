@@ -82,3 +82,46 @@ class ToolCall(BaseModel):
 class AssistantResponse(BaseModel):
     answer: str
     tool_calls: list[ToolCall]
+    # Identifies this request's online-eval trace (GET /evals/online/traces/{trace_id}).
+    trace_id: Optional[str] = None
+
+
+class TraceFlag(BaseModel):
+    check: str
+    detail: str
+
+
+class TraceRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    trace_id: str
+    created_at: datetime
+    user_id: int
+    question: str
+    answer: Optional[str]
+    error: Optional[str]
+    tool_results: list[dict[str, Any]]
+    latency_ms: int
+    router_model: str
+    answer_model: str
+    flags: list[TraceFlag]
+    judge_model: Optional[str]
+    grounded: Optional[bool]
+    complete: Optional[bool]
+    judge_reasoning: Optional[dict[str, str]]
+    judge_error: Optional[str]
+
+
+class OnlineEvalSummary(BaseModel):
+    since: datetime
+    traces: int
+    flagged: int
+    flags_by_check: dict[str, int]
+    judged: int
+    grounded_rate: Optional[float]  # share of judged answers that passed; None if none judged
+    complete_rate: Optional[float]
+    judge_errors: int
+    avg_latency_ms: Optional[int]
+    # The evaluator's state in this server process
+    pending: int
+    dropped: int

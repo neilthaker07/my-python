@@ -5,6 +5,9 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 
+# Eval run reports (python -m evals.run)
+evals/results/
+
 # Secrets and local config: only the template is committed
 .env
 .env.*

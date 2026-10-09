@@ -9,7 +9,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from app.config import settings
 from app.rag.embeddings import EMBEDDING_DIM, embed_documents, embed_query
 
-# Separate from app.database: tasks live in SQLite, the knowledge base in Postgres.
+# Separate from app.database: tasks and the knowledge base can live in different databases.
 engine = create_engine(settings.knowledge_db_url)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 

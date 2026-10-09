@@ -93,6 +93,16 @@ def test_list_completed_since(client: TestClient):
     assert [t["title"] for t in response.json()] == ["done"]
 
 
+def test_list_newest_first_with_limit(client: TestClient):
+    for title in ["first", "second", "third"]:
+        create(client, title=title, due_date=str(TOMORROW))
+
+    response = client.get("/tasks", params={"newest_first": True, "limit": 2})
+
+    assert [t["title"] for t in response.json()] == ["third", "second"]
+    assert client.get("/tasks", params={"limit": 0}).status_code == 422
+
+
 def test_reschedule_moves_only_unfinished_tasks(client: TestClient):
     unfinished = create(client, title="unfinished", due_date=str(TODAY))
     finished = create(client, title="finished", due_date=str(TODAY))

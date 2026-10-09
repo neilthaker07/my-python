@@ -58,7 +58,21 @@ async def test_list_tasks_wraps_get_endpoint(task_api: TestClient):
     async with Client(mcp_server.mcp) as mcp:
         result = await mcp.call_tool("list_tasks", {"overdue": True}, meta=AS_ADMIN)
 
-    assert [t["title"] for t in result_json(result)] == ["overdue"]
+    assert result_json(result) == {"tasks": [result_json(result)["tasks"][0]], "more_tasks_exist": False}
+    assert [t["title"] for t in result_json(result)["tasks"]] == ["overdue"]
+
+
+@pytest.mark.anyio
+async def test_list_tasks_returns_only_the_newest_and_says_more_exist(task_api: TestClient):
+    for n in range(mcp_server.LIST_TASKS_LIMIT + 2):
+        task_api.post("/tasks", json={"title": f"task {n}"})
+
+    async with Client(mcp_server.mcp) as mcp:
+        result = await mcp.call_tool("list_tasks", {}, meta=AS_ADMIN)
+
+    newest = [f"task {n}" for n in reversed(range(2, mcp_server.LIST_TASKS_LIMIT + 2))]
+    assert [t["title"] for t in result_json(result)["tasks"]] == newest
+    assert result_json(result)["more_tasks_exist"] is True
 
 
 @pytest.mark.anyio

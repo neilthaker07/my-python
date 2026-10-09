@@ -42,9 +42,12 @@ def list_tasks(
     overdue: bool = Query(False, description="Only tasks past their due date that aren't done"),
     due_on: Optional[date] = None,
     completed_since: Optional[date] = Query(None, description="Tasks completed on or after this date"),
+    newest_first: bool = Query(False, description="Order by creation time, newest first, instead of by due date"),
+    limit: Optional[int] = Query(None, ge=1, le=500, description="Return at most this many tasks"),
 ) -> list[Task]:
     return service.list_tasks(
-        db, status=status, overdue=overdue, due_on=due_on, completed_since=completed_since, visible_to=user
+        db, status=status, overdue=overdue, due_on=due_on, completed_since=completed_since, visible_to=user,
+        newest_first=newest_first, limit=limit,
     )
 
 

@@ -13,13 +13,12 @@ class FakeAssistant:
         self.questions: list[str] = []
         self.users: list[int] = []
 
-    async def ask(self, question: str, user) -> AssistantResponse:
+    async def ask_with_results(self, question: str, user):
         self.questions.append(question)
         self.users.append(user.id)
-        return AssistantResponse(
-            answer="You have 1 overdue task.",
-            tool_calls=[ToolCall(name="list_tasks", input={"overdue": True})],
-        )
+        call = ToolCall(name="list_tasks", input={"overdue": True})
+        response = AssistantResponse(answer="You have 1 overdue task.", tool_calls=[call])
+        return response, [(call, '{"tasks": [], "more_tasks_exist": false}')]
 
 
 @pytest.fixture
@@ -34,7 +33,9 @@ def test_assistant_returns_answer_and_tool_calls(client: TestClient, fake_assist
     response = client.post("/assistant", json={"question": "Show my overdue tasks"})
 
     assert response.status_code == 200
-    assert response.json() == {
+    body = response.json()
+    assert len(body.pop("trace_id")) == 32
+    assert body == {
         "answer": "You have 1 overdue task.",
         "tool_calls": [{"name": "list_tasks", "input": {"overdue": True}}],
     }

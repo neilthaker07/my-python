@@ -102,6 +102,10 @@ Example: Task 1 "{{{{task:1.title}}}}" is {{{{task:1.status}}}} with \
 If a tool returned an error, such as a permission denial, explain it plainly. \
 Never claim a task was created unless a create_task result shows it.
 
+list_tasks returns only the most recently created matching tasks. If its result \
+has "more_tasks_exist": true, say these are the newest ones and that more match; \
+don't present them as the full list or count them as the total.
+
 {user}
 Today's date is {today}."""
 
@@ -145,12 +149,20 @@ class TaskAssistant:
 
     async def ask(self, question: str, user: UserRead) -> AssistantResponse:
         """Answer `question` for `user`. Tools run with that user's permissions."""
+        response, _ = await self.ask_with_results(question, user)
+        return response
+
+    async def ask_with_results(
+        self, question: str, user: UserRead
+    ) -> tuple[AssistantResponse, list[tuple[ToolCall, str]]]:
+        """Like ask(), but also returns each tool call with its output: the data the
+        answer is based on. The evals (evals/run.py) grade the answer against it."""
         today = date.today().isoformat()
         context = PromptContext(today=today, user=user)
 
         results = await self._plan_and_execute(question, context)
         if results is None:
-            return AssistantResponse(answer=REFUSAL_ANSWER, tool_calls=[])
+            return AssistantResponse(answer=REFUSAL_ANSWER, tool_calls=[]), []
 
         tool_calls = [call for call, _ in results]
         tasks = _fetched_tasks(results)
@@ -160,11 +172,11 @@ class TaskAssistant:
         for _ in range(2):
             template = await self._compose(question, context, results, problems)
             if template is None:
-                return AssistantResponse(answer=REFUSAL_ANSWER, tool_calls=tool_calls)
+                return AssistantResponse(answer=REFUSAL_ANSWER, tool_calls=tool_calls), results
             answer, problems = fill_placeholders(template, tasks)
             if not problems:
-                return AssistantResponse(answer=answer or REFUSAL_ANSWER, tool_calls=tool_calls)
-        return AssistantResponse(answer=UNVERIFIED_ANSWER, tool_calls=tool_calls)
+                return AssistantResponse(answer=answer or REFUSAL_ANSWER, tool_calls=tool_calls), results
+        return AssistantResponse(answer=UNVERIFIED_ANSWER, tool_calls=tool_calls), results
 
     async def _plan_and_execute(
         self, question: str, context: "PromptContext"
@@ -360,7 +372,10 @@ def _runnable_calls(plan: Plan, done: list[ToolCall]) -> list[ToolCall]:
     """
     calls: list[ToolCall] = []
     for planned in plan.calls:
-        call = ToolCall(name=planned.tool, input=planned.arguments)
+        # The model writes null for arguments it isn't setting; every tool's default means
+        # the same, and some arguments (e.g. overdue: bool) would reject null.
+        arguments = {name: value for name, value in planned.arguments.items() if value is not None}
+        call = ToolCall(name=planned.tool, input=arguments)
         if call.name in WRITE_TOOLS and (call in done or call in calls):
             continue
         calls.append(call)
@@ -369,13 +384,14 @@ def _runnable_calls(plan: Plan, done: list[ToolCall]) -> list[ToolCall]:
 
 
 def _fetched_tasks(results: list[tuple[ToolCall, str]]) -> dict[int, dict]:
-    """Task records from successful list_tasks / get_task calls, keyed by task id."""
+    """Task records from successful list_tasks / get_task / create_task calls, keyed by task id."""
     tasks: dict[int, dict] = {}
     for call, output in results:
         if call.name not in TASK_TOOLS or output.startswith("ERROR:"):
             continue
         data = json.loads(output)
-        for task in data if isinstance(data, list) else [data]:
+        # list_tasks returns {"tasks": [...], "more_tasks_exist": ...}; the others one task.
+        for task in data["tasks"] if "tasks" in data else [data]:
             tasks[task["id"]] = task
     return tasks
 

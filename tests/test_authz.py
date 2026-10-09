@@ -18,7 +18,7 @@ from app.models import UserRole
 from app.schemas import UserRead
 from app.services.assistant import TaskAssistant
 from tests.conftest import ADMIN_ID, ALICE_ID, BOB_ID, CAROL_ID, DAVE_ID
-from tests.test_assistant_service import FakeOpenAI, function_call, reply, text
+from tests.test_assistant_service import FakeOpenAI, offered_tools, plan, reply, text
 
 
 def as_user(user_id: int) -> dict[str, str]:
@@ -195,15 +195,15 @@ CAROL = UserRead(id=CAROL_ID, name="Carol", role=UserRole.MANAGER, team="platfor
 
 @pytest.mark.anyio
 async def test_create_task_is_not_offered_to_users_who_cant_use_it(task_api: TestClient):
-    fake = FakeOpenAI(router_reply=reply(), composer_reply=reply(text("You can't create tasks here.")))
+    fake = FakeOpenAI(router_reply=plan(), composer_reply=reply(text("You can't create tasks here.")))
 
     async with TaskAssistant(mcp_server.mcp, openai_client=fake) as assistant:
         await assistant.ask("Create a task 'Fix bug'", ALICE)
         await assistant.ask("Create a task 'Fix bug'", CAROL)
 
     alice_request, carol_request = fake.router_requests()
-    assert "create_task" not in {t["name"] for t in alice_request["tools"]}
-    assert "create_task" in {t["name"] for t in carol_request["tools"]}
+    assert "create_task" not in offered_tools(alice_request)
+    assert "create_task" in offered_tools(carol_request)
     # Both models are told, so the answer can explain why nothing was created.
     assert "can't create tasks through the assistant" in fake.composer_requests()[0]["instructions"]
 
@@ -212,7 +212,7 @@ async def test_create_task_is_not_offered_to_users_who_cant_use_it(task_api: Tes
 async def test_mcp_rule_holds_even_if_the_model_calls_a_hidden_tool(task_api: TestClient):
     # The model (wrongly) calls create_task although it wasn't offered to Alice.
     fake = FakeOpenAI(
-        router_reply=reply(function_call("create_task", {"title": "Fix bug"})),
+        router_reply=plan(("create_task", {"title": "Fix bug"})),
         composer_reply=reply(text("You can't create tasks through the assistant.")),
     )
 
@@ -227,7 +227,7 @@ async def test_mcp_rule_holds_even_if_the_model_calls_a_hidden_tool(task_api: Te
 async def test_assistant_cannot_create_tasks_the_user_isnt_allowed_to(task_api: TestClient):
     # The model tries to create a task for Dave (sales) on Carol's (platform) behalf.
     fake = FakeOpenAI(
-        router_reply=reply(function_call("create_task", {"title": "Fix bug", "assignee_id": DAVE_ID})),
+        router_reply=plan(("create_task", {"title": "Fix bug", "assignee_id": DAVE_ID})),
         composer_reply=reply(text("You can only create tasks for your team.")),
     )
 
@@ -241,10 +241,10 @@ async def test_assistant_cannot_create_tasks_the_user_isnt_allowed_to(task_api: 
 
 @pytest.mark.anyio
 async def test_assistant_creates_as_the_asking_user_and_never_twice(task_api: TestClient):
-    create_call = function_call("create_task", {"title": "Prepare demo"})
+    create_call = ("create_task", {"title": "Prepare demo"})
     fake = FakeOpenAI(
-        # The model repeats the same create in round 2; it must not run again.
-        router_reply=[reply(create_call), reply(create_call)],
+        # The model plans the same create twice, then again in round 2; it must run once.
+        router_reply=[plan(create_call, create_call, needs_results=True), plan(create_call)],
         composer_reply=reply(text("Created task.")),
     )
 

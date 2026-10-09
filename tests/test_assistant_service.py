@@ -1,4 +1,4 @@
-"""Runs the route → fetch → compose pipeline against the real MCP server in-process.
+"""Runs the plan → execute → compose pipeline against the real MCP server in-process.
 
 The LLM is replaced by a fake client and the knowledge-base search is stubbed out,
 so no API key or Postgres is needed.
@@ -37,8 +37,16 @@ def reply(*output) -> SimpleNamespace:
     return SimpleNamespace(output=list(output), output_text="".join(texts))
 
 
-def function_call(name: str, arguments: dict) -> SimpleNamespace:
-    return SimpleNamespace(type="function_call", call_id=f"call_{name}", name=name, arguments=json.dumps(arguments))
+def plan(*calls: tuple[str, dict], needs_results: bool = False) -> SimpleNamespace:
+    """A router reply: a JSON plan of (tool, arguments) calls."""
+    body = {"calls": [{"tool": name, "arguments": args} for name, args in calls], "needs_results": needs_results}
+    return reply(text(json.dumps(body)))
+
+
+def offered_tools(router_request: dict) -> set[str]:
+    """The tools a router request lets the model plan, read from the plan's JSON schema."""
+    branches = router_request["text"]["format"]["schema"]["properties"]["calls"]["items"]["anyOf"]
+    return {branch["properties"]["tool"]["const"] for branch in branches}
 
 
 def text(value: str) -> SimpleNamespace:
@@ -52,8 +60,8 @@ def refusal() -> SimpleNamespace:
 class FakeResponses:
     """Answers the router and composer calls, told apart by model.
 
-    Router replies are returned in order, one per routing round; once they run out
-    the router "replies" with no tool calls, which ends the routing loop.
+    Router replies are returned in order, one per planning round; once they run out
+    the router replies with an empty plan, which ends the planning loop.
     """
 
     def __init__(self, router_replies: list[SimpleNamespace], composer_replies: list[SimpleNamespace]) -> None:
@@ -62,10 +70,11 @@ class FakeResponses:
 
     async def create(self, **kwargs) -> SimpleNamespace:
         model = kwargs["model"]
-        # Snapshot the input: the assistant keeps appending to the same conversation list.
         self.requests[model].append({**kwargs, "input": copy.deepcopy(kwargs["input"])})
         queue = self.replies[model]
-        return queue.pop(0) if queue else reply()
+        if queue:
+            return queue.pop(0)
+        return plan() if model == settings.router_model else reply()
 
 
 class FakeOpenAI:
@@ -101,7 +110,7 @@ def stub_search(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.anyio
 async def test_faq_question_routes_to_knowledge_base(stub_search):
     fake = FakeOpenAI(
-        router_reply=reply(function_call("search_knowledge_base", {"query": "blocked status"})),
+        router_reply=plan(("search_knowledge_base", {"query": "blocked status"})),
         composer_reply=reply(text("Blocked means you're waiting on someone else.")),
     )
 
@@ -112,7 +121,9 @@ async def test_faq_question_routes_to_knowledge_base(stub_search):
     assert response.tool_calls == [ToolCall(name="search_knowledge_base", input={"query": "blocked status"})]
 
     router_request = fake.router_requests()[0]
-    assert {t["name"] for t in router_request["tools"]} == {"list_tasks", "get_task", "create_task", "list_users", "search_knowledge_base"}
+    assert offered_tools(router_request) == {"list_tasks", "get_task", "create_task", "list_users", "search_knowledge_base"}
+    # The model can't see function tools in a plan, so their descriptions are in the prompt.
+    assert "- search_knowledge_base: Semantic search" in router_request["instructions"]
 
     # The composer gets the question plus the tool output, and no tools of its own.
     composer_request = fake.composer_requests()[0]
@@ -125,7 +136,7 @@ async def test_faq_question_routes_to_knowledge_base(stub_search):
 @pytest.mark.anyio
 async def test_tool_error_is_passed_to_composer(task_api: TestClient):
     fake = FakeOpenAI(
-        router_reply=reply(function_call("get_task", {"task_id": 999})),
+        router_reply=plan(("get_task", {"task_id": 999})),
         composer_reply=reply(text("Task 999 doesn't exist.")),
     )
 
@@ -138,7 +149,7 @@ async def test_tool_error_is_passed_to_composer(task_api: TestClient):
 
 @pytest.mark.anyio
 async def test_no_tool_needed_still_composes_answer():
-    fake = FakeOpenAI(router_reply=reply(), composer_reply=reply(text("Hi! How can I help?")))
+    fake = FakeOpenAI(router_reply=plan(), composer_reply=reply(text("Hi! How can I help?")))
 
     async with TaskAssistant(mcp_server.mcp, openai_client=fake) as assistant:
         response = await assistant.ask("hello", ADMIN)
@@ -160,9 +171,10 @@ async def test_router_refusal_skips_tools_and_composer():
 
 
 @pytest.mark.anyio
-async def test_router_retries_once_when_provider_rejects_tool_arguments(task_api: TestClient):
+@pytest.mark.parametrize("code", ["json_validate_failed", "tool_use_failed"])
+async def test_router_retries_once_when_provider_rejects_the_plan(task_api: TestClient, code: str):
     fake = FakeOpenAI(
-        router_reply=reply(function_call("list_tasks", {"overdue": True})),
+        router_reply=plan(("list_tasks", {"overdue": True})),
         composer_reply=reply(text("No overdue tasks.")),
     )
     original_create = fake.responses.create
@@ -175,9 +187,9 @@ async def test_router_retries_once_when_provider_rejects_tool_arguments(task_api
             if calls == 1:
                 request = httpx.Request("POST", "http://test/responses")
                 raise openai.BadRequestError(
-                    "Tool call validation failed",
+                    "Plan validation failed",
                     response=httpx.Response(400, request=request),
-                    body={"code": "tool_use_failed"},
+                    body={"code": code},
                 )
         return await original_create(**kwargs)
 
@@ -186,19 +198,15 @@ async def test_router_retries_once_when_provider_rejects_tool_arguments(task_api
     async with TaskAssistant(mcp_server.mcp, openai_client=fake) as assistant:
         response = await assistant.ask("Do I have overdue tasks?", ADMIN)
 
-    assert calls == 3  # rejected, retried, then the round that ends the loop
+    assert calls == 2  # rejected, then retried; the plan is final, so no further round
     assert response.answer == "No overdue tasks."
     assert response.tool_calls == [ToolCall(name="list_tasks", input={"overdue": True})]
 
 
 @pytest.mark.anyio
-async def test_router_loops_to_cover_multi_part_questions(task_api: TestClient, stub_search):
+async def test_multi_part_question_is_planned_once_and_run_in_parallel(task_api: TestClient, stub_search):
     fake = FakeOpenAI(
-        router_reply=[
-            reply(function_call("search_knowledge_base", {"query": "leave"})),
-            reply(function_call("list_tasks", {"overdue": True})),
-            reply(text("done")),
-        ],
+        router_reply=plan(("search_knowledge_base", {"query": "leave"}), ("list_tasks", {"overdue": True})),
         composer_reply=reply(text("Hand over your tasks. You have no overdue tasks.")),
     )
 
@@ -206,12 +214,10 @@ async def test_router_loops_to_cover_multi_part_questions(task_api: TestClient, 
         response = await assistant.ask("I'm going on leave. Any overdue tasks?", ADMIN)
 
     assert [call.name for call in response.tool_calls] == ["search_knowledge_base", "list_tasks"]
-
-    # Round 2 sees round 1's tool call and output, so the model knows what it already has.
-    second_round_input = fake.router_requests()[1]["input"]
-    assert [item.get("type", "message") for item in second_round_input] == [
-        "message", "function_call", "function_call_output",
-    ]
+    assert len(fake.router_requests()) == 1  # needs_results is false: no second round
+    # The router asks for a JSON plan, not function tool calls.
+    router_request = fake.router_requests()[0]
+    assert router_request["text"]["format"]["type"] == "json_schema" and "tools" not in router_request
 
     # The composer gets both results.
     prompt = fake.composer_requests()[0]["input"]
@@ -219,19 +225,88 @@ async def test_router_loops_to_cover_multi_part_questions(task_api: TestClient, 
 
 
 @pytest.mark.anyio
-async def test_routing_stops_after_max_rounds(task_api: TestClient):
-    from app.services.assistant import MAX_ROUTING_ROUNDS
+async def test_router_plans_again_when_it_needs_results(task_api: TestClient):
+    task = task_api.post("/tasks", json={"title": "Prepare demo"}).json()
+    fake = FakeOpenAI(
+        router_reply=[
+            plan(("list_tasks", {}), needs_results=True),
+            plan(("get_task", {"task_id": task["id"]})),
+        ],
+        composer_reply=reply(text("ok")),
+    )
+
+    async with TaskAssistant(mcp_server.mcp, openai_client=fake) as assistant:
+        response = await assistant.ask("Show my newest task", ADMIN)
+
+    assert [call.name for call in response.tool_calls] == ["list_tasks", "get_task"]
+    # Round 2 sees round 1's results, so the model knows what it already has.
+    first_input, second_input = (request["input"] for request in fake.router_requests())
+    assert first_input == "Show my newest task"
+    assert 'tool="list_tasks"' in second_input and "Prepare demo" in second_input
+
+
+@pytest.mark.anyio
+async def test_write_waits_for_the_reads_it_depends_on(task_api: TestClient):
+    from tests.conftest import DAVE_ID
 
     fake = FakeOpenAI(
-        router_reply=[reply(function_call("list_tasks", {})) for _ in range(MAX_ROUTING_ROUNDS + 2)],
+        router_reply=[
+            # The model plans create_task next to list_users, with a guessed assignee.
+            plan(("list_users", {}), ("create_task", {"title": "Fix bug"}), needs_results=True),
+            plan(("create_task", {"title": "Fix bug", "assignee_id": DAVE_ID})),
+        ],
+        composer_reply=reply(text("Created.")),
+    )
+
+    async with TaskAssistant(mcp_server.mcp, openai_client=fake) as assistant:
+        response = await assistant.ask("Create a task 'Fix bug' for Dave", ADMIN)
+
+    assert response.tool_calls == [
+        ToolCall(name="list_users", input={}),
+        ToolCall(name="create_task", input={"title": "Fix bug", "assignee_id": DAVE_ID}),
+    ]
+    assert [t["assignee_id"] for t in task_api.get("/tasks").json()] == [DAVE_ID]
+
+
+@pytest.mark.anyio
+async def test_null_arguments_are_left_to_the_tool_defaults(task_api: TestClient):
+    fake = FakeOpenAI(
+        router_reply=plan(("list_tasks", {"status": None, "overdue": None, "due_on": None})),
+        composer_reply=reply(text("ok")),
+    )
+
+    async with TaskAssistant(mcp_server.mcp, openai_client=fake) as assistant:
+        response = await assistant.ask("List my tasks", ADMIN)
+
+    assert response.tool_calls == [ToolCall(name="list_tasks", input={})]
+    assert "ERROR:" not in fake.composer_requests()[0]["input"]
+
+
+@pytest.mark.anyio
+async def test_invalid_plan_composes_from_no_data():
+    fake = FakeOpenAI(router_reply=reply(text("not json")), composer_reply=reply(text("I couldn't find that.")))
+
+    async with TaskAssistant(mcp_server.mcp, openai_client=fake) as assistant:
+        response = await assistant.ask("Do I have overdue tasks?", ADMIN)
+
+    assert response.tool_calls == []
+    assert response.answer == "I couldn't find that."
+
+
+@pytest.mark.anyio
+async def test_planning_stops_after_max_rounds(task_api: TestClient):
+    from app.services.assistant import MAX_PLANNING_ROUNDS
+
+    fake = FakeOpenAI(
+        router_reply=[plan(("list_tasks", {}), needs_results=True) for _ in range(MAX_PLANNING_ROUNDS + 2)],
         composer_reply=reply(text("ok")),
     )
 
     async with TaskAssistant(mcp_server.mcp, openai_client=fake) as assistant:
         response = await assistant.ask("loop forever", ADMIN)
 
-    assert len(fake.router_requests()) == MAX_ROUTING_ROUNDS
-    assert len(response.tool_calls) == MAX_ROUTING_ROUNDS
+    assert len(fake.router_requests()) == MAX_PLANNING_ROUNDS
+    assert len(response.tool_calls) == MAX_PLANNING_ROUNDS
 
 
 @pytest.mark.anyio
@@ -239,7 +314,7 @@ async def test_task_values_in_answer_come_from_mcp_data(task_api: TestClient):
     task = task_api.post("/tasks", json={"title": "Prepare demo", "priority": "high"}).json()
     tid = task["id"]
     fake = FakeOpenAI(
-        router_reply=reply(function_call("get_task", {"task_id": tid})),
+        router_reply=plan(("get_task", {"task_id": tid})),
         composer_reply=reply(text(
             f'Task {tid} "{{{{task:{tid}.title}}}}" is {{{{task:{tid}.status}}}} '
             f"with {{{{task:{tid}.priority}}}} priority, due {{{{task:{tid}.due_date}}}}."
@@ -259,7 +334,7 @@ async def test_placeholder_for_unfetched_task_is_retried_with_feedback(task_api:
     task = task_api.post("/tasks", json={"title": "Real task"}).json()
     tid = task["id"]
     fake = FakeOpenAI(
-        router_reply=reply(function_call("get_task", {"task_id": tid})),
+        router_reply=plan(("get_task", {"task_id": tid})),
         composer_reply=[
             reply(text("Task 999 is {{task:999.status}}.")),
             reply(text(f"Task {tid} is {{{{task:{tid}.status}}}}.")),
@@ -277,7 +352,7 @@ async def test_placeholder_for_unfetched_task_is_retried_with_feedback(task_api:
 @pytest.mark.anyio
 async def test_answer_that_never_matches_the_data_is_not_returned(task_api: TestClient):
     fake = FakeOpenAI(
-        router_reply=reply(function_call("list_tasks", {})),
+        router_reply=plan(("list_tasks", {})),
         composer_reply=[reply(text("{{task:1.owner}}")), reply(text("{{task:1.owner}}"))],
     )
 
@@ -285,3 +360,17 @@ async def test_answer_that_never_matches_the_data_is_not_returned(task_api: Test
         response = await assistant.ask("who owns task 1?", ADMIN)
 
     assert response.answer == UNVERIFIED_ANSWER
+
+
+@pytest.mark.anyio
+async def test_task_values_are_filled_from_list_tasks_results(task_api: TestClient):
+    tid = task_api.post("/tasks", json={"title": "Prepare demo"}).json()["id"]
+    fake = FakeOpenAI(
+        router_reply=plan(("list_tasks", {})),
+        composer_reply=reply(text(f'Task {tid}: "{{{{task:{tid}.title}}}}".')),
+    )
+
+    async with TaskAssistant(mcp_server.mcp, openai_client=fake) as assistant:
+        response = await assistant.ask("List my tasks", ADMIN)
+
+    assert response.answer == f'Task {tid}: "Prepare demo".'

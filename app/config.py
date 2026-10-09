@@ -9,7 +9,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_name: str = "Task Assistant"
-    database_url: str = "sqlite:///./tasks.db"
+    # Tasks and users (Postgres). Same database as the knowledge base by default.
+    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/task_assistant"
 
     # RAG knowledge base (Postgres + pgvector)
     knowledge_db_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/task_assistant"
@@ -32,6 +33,22 @@ class Settings(BaseSettings):
     # Small, fast model that picks the tools; the main model writes the answer.
     router_model: str = "openai/gpt-oss-20b"
     answer_model: str = "openai/gpt-oss-120b"
+    # Grades the assistant's answers in the evals (evals/run.py). A different model
+    # family from answer_model, since a model tends to rate its own writing higher.
+    judge_model: str = "qwen/qwen3.8-27b"
+
+    # Online evals: score live /assistant traffic in the background (app/services/online_evals.py).
+    online_eval_enabled: bool = True
+    # Share of answers the judge grades. Code checks run on every request. Each judged
+    # answer is one judge_model call, so mind the provider's daily limits.
+    online_eval_judge_sample_rate: float = 0.2
+    # A knowledge-base search whose best hit scores lower is flagged: the FAQ likely
+    # has no good answer, i.e. an entry worth adding.
+    online_eval_min_retrieval_score: float = 0.6
+    online_eval_slow_ms: int = 20_000
+    # Traces waiting to be evaluated. When full, new ones are dropped (and counted),
+    # so a slow judge never holds up requests.
+    online_eval_queue_size: int = 100
 
 
 settings = Settings()

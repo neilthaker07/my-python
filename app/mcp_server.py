@@ -28,6 +28,10 @@ from app.models import TaskPriority, TaskStatus, UserRole
 from app.rag import store
 from app.services.permissions import PermissionDenied, check_can_create_via_mcp
 
+# list_tasks returns at most this many tasks (the newest), so a large task list
+# can't flood the model's context.
+LIST_TASKS_LIMIT = 5
+
 mcp = MCPServer(
     "task-assistant",
     instructions="Read and create the user's tasks and search the task-management knowledge base.",
@@ -69,6 +73,7 @@ async def list_tasks(
     completed_since: Optional[date] = None,
 ) -> str:
     """List the tasks the user can see. All filters are optional and can be combined.
+    Returns at most 5 tasks, the most recently created, and whether more match.
 
     Args:
         status: Only tasks with this status.
@@ -76,14 +81,16 @@ async def list_tasks(
         due_on: Only tasks due on this date (YYYY-MM-DD).
         completed_since: Only tasks completed on or after this date (YYYY-MM-DD).
     """
-    params: dict[str, Any] = {"overdue": overdue}
+    # Ask for one extra task: if it comes back, more match than we return.
+    params: dict[str, Any] = {"overdue": overdue, "newest_first": True, "limit": LIST_TASKS_LIMIT + 1}
     if status is not None:
         params["status"] = status.value
     if due_on is not None:
         params["due_on"] = due_on.isoformat()
     if completed_since is not None:
         params["completed_since"] = completed_since.isoformat()
-    return json.dumps(await _request(ctx, "GET", "/tasks", params=params))
+    tasks = await _request(ctx, "GET", "/tasks", params=params)
+    return json.dumps({"tasks": tasks[:LIST_TASKS_LIMIT], "more_tasks_exist": len(tasks) > LIST_TASKS_LIMIT})
 
 
 @mcp.tool()

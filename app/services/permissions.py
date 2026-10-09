@@ -7,6 +7,7 @@
 - Admins can do everything.
 - Only managers and admins can bulk-reschedule, and only within what they can see.
 - Deleting: admins, the team's manager, or the creator while the task is still 'todo'.
+- Online eval traces hold every user's questions and task data, so only admins can read them.
 - Creating through the MCP create_task tool (the assistant) is limited further, to
   the roles in MCP_CREATE_TASK_ROLES (managers and admins by default).
 
@@ -83,3 +84,8 @@ def check_can_create_via_mcp(role: UserRole) -> None:
     if not can_create_via_mcp(role):
         allowed = ", ".join(sorted(r.value for r in MCP_CREATE_TASK_ROLES)) or "nobody"
         raise PermissionDenied(f"Creating tasks through the assistant is limited to: {allowed}.")
+
+
+def check_can_view_traces(user: User) -> None:
+    if user.role != UserRole.ADMIN:
+        raise PermissionDenied("Only admins can view assistant traces.")

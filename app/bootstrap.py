@@ -24,6 +24,21 @@ def init_db() -> None:
         db.execute(update(Task).where(Task.created_by_id.is_(None)).values(created_by_id=owner))
         db.execute(update(Task).where(Task.assignee_id.is_(None)).values(assignee_id=owner))
         db.commit()
+    sync_id_sequences()
+
+
+def sync_id_sequences() -> None:
+    """Move each table's id sequence past its highest id.
+
+    Rows inserted with explicit ids (the sample users, copied data) don't advance
+    Postgres' sequences, so the next insert would otherwise reuse a taken id.
+    """
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            conn.execute(text(
+                f"SELECT setval(pg_get_serial_sequence('{table.name}', 'id'), COALESCE(MAX(id), 0) + 1, false) "
+                f"FROM {table.name}"
+            ))
 
 
 def _add_missing_task_columns() -> None:
