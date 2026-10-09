@@ -106,26 +106,12 @@ Rules (`app/services/permissions.py`):
 
 The assistant can't get around these rules. `/assistant` knows who is asking, and every MCP tool call carries that user's id in the request metadata (`_meta`), outside the tool arguments, so the LLM can't see or change it. The MCP server forwards it to the API, which checks permissions and returns 403 when an action isn't allowed. The assistant then explains the denial. It also never runs the same `create_task` call twice for one question.
 
-## Online evals
+## Evals
 
-Every `/assistant` request is also scored in the background, on live traffic, without slowing it down (`app/services/online_evals.py`):
+Two kinds of evals check the quality of the assistant's answers. See [evals/README.md](evals/README.md) for details.
 
-1. The request hands a trace (question, user, tool calls and outputs, answer, latency) to a bounded in-memory queue and returns. The response includes a `trace_id`.
-2. Two background workers, running in parallel with requests, run **code checks** on every trace: `request_error`, `refused`, `unverified`, `unfilled_placeholder`, `tool_error`, `low_retrieval` (the best knowledge-base hit scored below `ONLINE_EVAL_MIN_RETRIEVAL_SCORE`, so the FAQ likely needs an entry) and `slow`.
-3. A sample of answers (`ONLINE_EVAL_JUDGE_SAMPLE_RATE`, 20% by default) also goes to the **LLM judge** from `evals/judge.py`, which grades `grounded` and `complete`. Live traffic has no answer key, so there's no `expectations` grade.
-4. Results are saved to the `assistant_traces` table.
-
-A request is never held up or broken by the evals. If the queue is full, the trace is dropped and counted, and an error while evaluating is only logged.
-
-Admins can read the results (traces contain every user's questions and task data):
-
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/evals/online/summary?hours=24` | Trace count, flags by check, judged count, grounded and complete rates, latency, queue state |
-| `GET` | `/evals/online/traces?problems_only=true` | Newest traces, optionally only flagged ones or failed judge grades |
-| `GET` | `/evals/online/traces/{trace_id}` | One trace with its tool outputs and the judge's reasoning |
-
-Flagged traces are good candidates for new offline eval cases in `evals/cases.jsonl`.
+- **Offline evals** (`python -m evals.run`): fixed questions with known correct answers, run before changing a prompt, model or tool, to catch regressions.
+- **Online evals:** every live `/assistant` request is scored in the background without slowing it down. Code checks run on every request and an LLM judge on a sample. They find problems you didn't anticipate, like knowledge-base gaps. Admins read the results at `GET /evals/online/summary` and `/evals/online/traces`.
 
 ## Test
 
@@ -167,13 +153,16 @@ app/
   services/
     tasks.py            task business logic (no HTTP)
     permissions.py      who may see, create, change and delete which tasks
+    online_evals.py     background scoring of live /assistant requests
     users.py            sample users and user queries
     assistant.py        plan (small model) → parallel MCP tool calls → compose (main model)
   routers/
     tasks.py            /tasks endpoints
     users.py            /users endpoints
+    evals.py            /evals/online endpoints (admin)
     assistant.py        /assistant endpoint
 data/faq.json           knowledge-base content for RAG
+evals/                  offline evals (run.py, cases.jsonl) and the LLM judge; see evals/README.md
 tests/                  pytest
 ```
 
