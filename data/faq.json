@@ -1,0 +1,242 @@
+[
+  {
+    "id": 1,
+    "category": "tasks",
+    "question": "How do I create a task?",
+    "answer": "Provide a title, description, assignee, priority, and due date. New tasks start with the status 'todo'."
+  },
+  {
+    "id": 2,
+    "category": "tasks",
+    "question": "What task statuses are available?",
+    "answer": "Tasks can be 'todo', 'in_progress', 'blocked', or 'done'. Use 'blocked' when a dependency prevents progress."
+  },
+  {
+    "id": 3,
+    "category": "tasks",
+    "question": "How should I choose a task priority?",
+    "answer": "Use 'high' for urgent work or issues affecting customers, 'medium' for normal planned work, and 'low' for improvements that can wait."
+  },
+  {
+    "id": 4,
+    "category": "tasks",
+    "question": "Who can change a task's assignee?",
+    "answer": "The task creator or a team manager can change the assignee. The new assignee must belong to the same enterprise."
+  },
+  {
+    "id": 5,
+    "category": "tasks",
+    "question": "When is a task considered overdue?",
+    "answer": "A task is overdue when its due date is earlier than today's date in the enterprise's configured timezone and its status is not 'done'."
+  },
+  {
+    "id": 6,
+    "category": "tasks",
+    "question": "What should I do when a task is blocked?",
+    "answer": "Change its status to 'blocked', add a comment explaining the dependency, and notify your team manager."
+  },
+  {
+    "id": 7,
+    "category": "tasks",
+    "question": "Can I reopen a completed task?",
+    "answer": "Yes. The task assignee or a team manager can change its status from 'done' to 'todo' or 'in_progress'. Add a comment explaining why it was reopened."
+  },
+  {
+    "id": 8,
+    "category": "tasks",
+    "question": "Can I change a task's due date?",
+    "answer": "The task creator or a team manager can change the due date. Add a comment explaining the reason for the change."
+  },
+  {
+    "id": 9,
+    "category": "access",
+    "question": "Which tasks can employees view?",
+    "answer": "Employees can view tasks assigned to them or created by them. Team managers can also view all tasks belonging to their team."
+  },
+  {
+    "id": 10,
+    "category": "support",
+    "question": "What should I do if I cannot update a task?",
+    "answer": "Check that you have permission to make the requested change. If you do, submit an IT support ticket containing the task ID and the error message."
+  },
+  {
+    "id": 11,
+    "category": "workflow",
+    "question": "What does 'in_progress' mean?",
+    "answer": "Use 'in_progress' once you have started actively working on a task. Only one person, the assignee, should move a task into 'in_progress'."
+  },
+  {
+    "id": 12,
+    "category": "workflow",
+    "question": "When should I mark a task as done?",
+    "answer": "Mark a task 'done' only when the work is complete and, if it needs a review, the reviewer has approved it. The completion date is recorded automatically."
+  },
+  {
+    "id": 13,
+    "category": "workflow",
+    "question": "How long can a task stay blocked?",
+    "answer": "A task should not stay 'blocked' for more than 3 working days. After that, the team manager must either remove the blocker, reassign the task, or move its due date."
+  },
+  {
+    "id": 14,
+    "category": "workflow",
+    "question": "Can I split a large task into smaller ones?",
+    "answer": "Yes. Create a separate task for each piece of work and mention the original task ID in each description. Close the original task once all the smaller tasks are done."
+  },
+  {
+    "id": 15,
+    "category": "workflow",
+    "question": "How do I hand over my tasks before going on leave?",
+    "answer": "Before leave longer than 2 days, ask your team manager to reassign your open tasks, and add a handover comment to each one describing its current state."
+  },
+  {
+    "id": 16,
+    "category": "workflow",
+    "question": "Can I create recurring tasks?",
+    "answer": "Recurring tasks are not supported yet. For repeating work, create a new task for each occurrence, or ask your team manager to schedule them in bulk."
+  },
+  {
+    "id": 17,
+    "category": "deadlines",
+    "question": "What is the response time for high-priority tasks?",
+    "answer": "High-priority tasks must be picked up within 4 working hours and should be updated at least once per working day until they are done."
+  },
+  {
+    "id": 18,
+    "category": "deadlines",
+    "question": "Do weekends and public holidays count toward due dates?",
+    "answer": "Due dates are calendar dates, so weekends and holidays are not skipped. Choose a working day as the due date when you create or reschedule a task."
+  },
+  {
+    "id": 19,
+    "category": "deadlines",
+    "question": "How do I reschedule many tasks at once?",
+    "answer": "Team managers can move every task due on one date to another date in a single action using the bulk reschedule feature. Tasks that are already 'done' are not moved."
+  },
+  {
+    "id": 20,
+    "category": "deadlines",
+    "question": "What happens when a task becomes overdue?",
+    "answer": "Overdue tasks are highlighted in the task list and included in the assignee's daily summary. Tasks overdue by more than 5 working days are escalated to the team manager."
+  },
+  {
+    "id": 21,
+    "category": "deadlines",
+    "question": "Can a task have no due date?",
+    "answer": "Yes. Due dates are optional, but high-priority tasks should always have one. Tasks without a due date are never considered overdue."
+  },
+  {
+    "id": 22,
+    "category": "notifications",
+    "question": "Which notifications will I receive?",
+    "answer": "You are notified when a task is assigned to you, when someone comments on your task, when a task you created changes status, and when one of your tasks becomes overdue."
+  },
+  {
+    "id": 23,
+    "category": "notifications",
+    "question": "How do I turn off email notifications?",
+    "answer": "Open Settings > Notifications and switch off the email channel. Overdue alerts for high-priority tasks cannot be turned off."
+  },
+  {
+    "id": 24,
+    "category": "notifications",
+    "question": "What is the daily summary?",
+    "answer": "Every working day at 9:00 in your timezone you receive a summary of tasks due today, overdue tasks, and tasks completed yesterday."
+  },
+  {
+    "id": 25,
+    "category": "access",
+    "question": "What roles exist in the task system?",
+    "answer": "There are three roles: employee, team manager, and administrator. Employees manage their own tasks, team managers manage their team's tasks, and administrators manage users and settings."
+  },
+  {
+    "id": 26,
+    "category": "access",
+    "question": "How do I get access to another team's tasks?",
+    "answer": "Ask the other team's manager to add you as a guest. Guests can view and comment on that team's tasks but cannot change them."
+  },
+  {
+    "id": 27,
+    "category": "access",
+    "question": "Can I delete a task?",
+    "answer": "Only the task creator can delete a task, and only while its status is 'todo'. Team managers can delete any task in their team. Deleted tasks cannot be restored."
+  },
+  {
+    "id": 28,
+    "category": "access",
+    "question": "What happens to my tasks when I leave the company?",
+    "answer": "When an account is deactivated, its open tasks are reassigned to the team manager, who must redistribute them within 5 working days."
+  },
+  {
+    "id": 29,
+    "category": "security",
+    "question": "Can I store passwords or customer data in a task?",
+    "answer": "No. Never put passwords, API keys, or customer personal data in task titles, descriptions, or comments. Link to the approved secure storage system instead."
+  },
+  {
+    "id": 30,
+    "category": "security",
+    "question": "How long are completed tasks kept?",
+    "answer": "Completed tasks are kept for 2 years after their completion date and then archived. Archived tasks can be restored by an administrator on request."
+  },
+  {
+    "id": 31,
+    "category": "security",
+    "question": "Is task activity audited?",
+    "answer": "Yes. Every change to a task's status, assignee, priority, or due date is recorded with the user and time, and administrators can export the audit log."
+  },
+  {
+    "id": 32,
+    "category": "security",
+    "question": "How do I log in to the task system?",
+    "answer": "Sign in with your company single sign-on (SSO) account. Multi-factor authentication is required for all users."
+  },
+  {
+    "id": 33,
+    "category": "reporting",
+    "question": "How can I see what my team completed this week?",
+    "answer": "Filter the task list by status 'done' and a completion date from the start of the week. Team managers can also export this view as a CSV file."
+  },
+  {
+    "id": 34,
+    "category": "reporting",
+    "question": "What do the team metrics show?",
+    "answer": "Team metrics show the number of open, overdue, and completed tasks, and the average time from creation to completion, for the last 30 days."
+  },
+  {
+    "id": 35,
+    "category": "reporting",
+    "question": "Can I export tasks?",
+    "answer": "Yes. Any filtered task list can be exported as CSV. Exports include only the tasks you are allowed to view."
+  },
+  {
+    "id": 36,
+    "category": "integrations",
+    "question": "Is there an API for tasks?",
+    "answer": "Yes. The REST API supports listing, creating, updating, and rescheduling tasks. Request an API token from an administrator; tokens inherit your role's permissions."
+  },
+  {
+    "id": 37,
+    "category": "integrations",
+    "question": "Can I use the assistant to ask about my tasks?",
+    "answer": "Yes. The assistant can list your tasks, look up a task by ID, and answer questions about these task policies. It cannot change tasks yet."
+  },
+  {
+    "id": 38,
+    "category": "integrations",
+    "question": "Does the task system integrate with calendars?",
+    "answer": "Calendar integration is planned but not available yet. For now, add important due dates to your calendar manually."
+  },
+  {
+    "id": 39,
+    "category": "support",
+    "question": "How do I report a bug in the task system?",
+    "answer": "Submit an IT support ticket with the steps to reproduce the problem, what you expected, what happened instead, and a screenshot if possible."
+  },
+  {
+    "id": 40,
+    "category": "support",
+    "question": "What are IT support hours?",
+    "answer": "IT support answers tickets Monday to Friday, 8:00 to 18:00 in the enterprise's timezone. Urgent outages can be reported to the on-call phone line at any time."
+  }
+]

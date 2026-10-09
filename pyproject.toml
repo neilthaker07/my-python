@@ -1,0 +1,35 @@
+[project]
+name = "task-assistant"
+version = "0.1.0"
+description = "Task-management assistant — a playground for learning the Python AI backend stack."
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "sqlalchemy>=2.0",
+    "pydantic-settings>=2.2",
+    "httpx>=0.27",
+    # Stage 2: LLM + MCP
+    "openai>=3.26",
+    "mcp>=2.3,<3",
+    # RAG: Postgres + pgvector + local embeddings
+    "psycopg[binary]>=3.2",
+    "pgvector>=0.4",
+    "fastembed>=0.8",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app", "app.rag", "app.routers", "app.services"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
